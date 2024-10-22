@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Streaming App</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            display: flex;
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+        }
+
+        .sidebar {
+            width: 200px;
+            background-color: #333;
+            color: white;
+            padding: 20px;
+        }
+
+        .sidebar h2 {
+            color: #ffcc00;
+        }
+
+        .sidebar ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        .sidebar ul li {
+            margin: 10px 0;
+        }
+
+        .sidebar ul li a {
+            color: white;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+        }
+
+        .sidebar ul li a i {
+            margin-right: 10px; /* Spacing between icon and text */
+        }
+
+        .content {
+            flex-grow: 1;
+            padding: 20px;
+        }
+
+        section {
+            margin-bottom: 20px;
+        }
+
+        input[type="text"],
+        input[type="password"],
+        input[type="file"],
+        button {
+            display: block;
+            margin-bottom: 10px;
+            width: 100%;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        img {
+            width: 50px;
+            height: 50px;
+            margin-right: 10px;
+        }
+
+        .error {
+            color: red;
+        }
+
+        .success {
+            color: green;
+        }
+
+        .music-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>Music App</h2>
+        <ul>
+            <li><a href="#signup"><i class="fas fa-user-plus"></i> Sign Up</a></li>
+            <li><a href="#upload"><i class="fas fa-upload"></i> Upload Music</a></li>
+            <li><a href="#library"><i class="fas fa-music"></i> My Library</a></li>
+            <li><a href="#search"><i class="fas fa-search"></i> Search Music</a></li>
+        </ul>
+    </div>
+    <div class="content">
+        <section id="signup">
+            <h2>Sign Up</h2>
+            <form id="signupForm">
+                <input type="text" id="username" placeholder="Username" required>
+                <input type="password" id="password" placeholder="Password" required>
+                <button type="submit">Sign Up</button>
+                <div id="signupMessage" class="error"></div>
+            </form>
+        </section>
+        <section id="upload">
+            <h2>Upload Music</h2>
+            <form id="uploadForm" style="display:none;">
+                <input type="text" id="title" placeholder="Title" required>
+                <input type="text" id="artist" placeholder="Artist" required>
+                <input type="text" id="genre" placeholder="Genre" required>
+                <input type="file" id="audioFile" accept="audio/*" required>
+                <input type="file" id="coverArt" accept="image/*" required>
+                <button type="submit">Upload</button>
+                <div id="uploadMessage" class="error"></div>
+            </form>
+        </section>
+        <section id="library" style="display:none;">
+            <h2>My Library</h2>
+            <ul id="musicList"></ul>
+        </section>
+        <section id="search" style="display:none;">
+            <h2>Search Music</h2>
+            <input type="text" id="searchQuery" placeholder="Search...">
+            <button id="searchButton">Search</button>
+            <ul id="searchResults"></ul>
+        </section>
+    </div>
+    <script>
+        const dbPromise = indexedDB.open('musicAppDB', 1);
+
+        dbPromise.onupgradeneeded = event => {
+            const db = event.target.result;
+            db.createObjectStore('users', { keyPath: 'username' });
+            db.createObjectStore('music', { keyPath: 'id', autoIncrement: true });
+        };
+
+        dbPromise.onsuccess = event => {
+            const db = event.target.result;
+
+            // Sign Up functionality
+            const signupForm = document.getElementById('signupForm');
+            signupForm.onsubmit = async (event) => {
+                event.preventDefault();
+
+                const username = document.getElementById('username').value;
+                const password = document.getElementById('password').value;
+                const signupMessage = document.getElementById('signupMessage');
+
+                const transaction = db.transaction(['users'], 'readwrite');
+                const store = transaction.objectStore('users');
+
+                const request = store.add({ username, password });
+
+                request.onsuccess = () => {
+                    signupMessage.textContent = 'Signup successful! You can now upload music.';
+                    signupMessage.className = 'success';
+                    signupForm.reset();
+                    toggleSection('upload');
+                    document.getElementById('uploadForm').style.display = 'block'; // Show upload form after signup
+                };
+
+                request.onerror = () => {
+                    signupMessage.textContent = 'Username already exists. Please choose another.';
+                    signupMessage.className = 'error';
+                };
+            };
+
+            // Toggle visibility of sections based on user action
+            function toggleSection(sectionId) {
+                document.getElementById('upload').style.display = 'none';
+                document.getElementById('library').style.display = 'none';
+                document.getElementById('search').style.display = 'none';
+                document.getElementById(sectionId).style.display = 'block';
+            }
+
+            // Show the Upload section if user has signed up
+            const uploadForm = document.getElementById('uploadForm');
+            uploadForm.onsubmit = async (event) => {
+                event.preventDefault();
+
+                const title = document.getElementById('title').value;
+                const artist = document.getElementById('artist').value;
+                const genre = document.getElementById('genre').value;
+                const audioFile = document.getElementById('audioFile').files[0];
+                const coverArt = document.getElementById('coverArt').files[0];
+
+                const audioReader = new FileReader();
+                const coverReader = new FileReader();
+
+                audioReader.onload = async () => {
+                    const transaction = db.transaction(['music'], 'readwrite');
+                    const store = transaction.objectStore('music');
+
+                    const musicEntry = {
+                        audio: audioReader.result,
+                        cover: coverReader.result,
+                        title: title,
+                        artist: artist,
+                        genre: genre
+                    };
+
+                    store.add(musicEntry);
+                    displayMusicLibrary();
+                    document.getElementById('uploadMessage').textContent = 'Upload successful!';
+                };
+
+                coverReader.onload = () => {
+                    audioReader.readAsDataURL(audioFile);
+                };
+
+                coverReader.readAsDataURL(coverArt);
+            };
+
+            // Display Music Library
+            const displayMusicLibrary = async () => {
+                const transaction = db.transaction(['music'], 'readonly');
+                const store = transaction.objectStore('music');
+                const request = store.getAll();
+
+                request.onsuccess = () => {
+                    const musicList = document.getElementById('musicList');
+                    musicList.innerHTML = '';
+                    request.result.forEach(music => {
+                        const li = document.createElement('li');
+                        li.className = 'music-item';
+                        li.innerHTML = `
+                            <div>
+                                <img src="${music.cover}" alt="Cover Art">
+                                <span>${music.title} - ${music.artist} (${music.genre})</span>
+                                <audio controls>
+                                    <source src="${music.audio}" type="audio/mpeg">
+                                    Your browser does not support the audio tag.
+                                </audio>
+                            </div>
+                            <button class="deleteButton" data-id="${music.id}">Delete</button>
+                        `;
+                        musicList.appendChild(li);
+                    });
+
+                    // Attach event listeners to delete buttons
+                    document.querySelectorAll('.deleteButton').forEach(button => {
+                        button.onclick = () => {
+                            const musicId = button.getAttribute('data-id');
+                            deleteMusic(musicId);
+                        };
+                    });
+                };
+            };
+
+            // Function to delete music
+            const deleteMusic = (musicId) => {
+                const transaction = db.transaction(['music'], 'readwrite');
+                const store = transaction.objectStore('music');
+                const request = store.delete(parseInt(musicId));
+
+                request.onsuccess = () => {
+                  displayMusicLibrary(); // Refresh the music library after deletion
+                    alert('Music deleted successfully!');
+                };
+
+                request.onerror = () => {
+                    alert('Error deleting music. Please try again.');
+                };
+            };
+
+            // Search Functionality
+            document.getElementById('searchButton').onclick = async () => {
+                const query = document.getElementById('searchQuery').value.toLowerCase();
+                const transaction = db.transaction(['music'], 'readonly');
+                const store = transaction.objectStore('music');
+                const request = store.getAll();
+
+                request.onsuccess = () => {
+                    const results = request.result.filter(music => 
+                        music.title.toLowerCase().includes(query) || 
+                        music.artist.toLowerCase().includes(query) ||
+                        music.genre.toLowerCase().includes(query)
+                    );
+
+                    const searchResults = document.getElementById('searchResults');
+                    searchResults.innerHTML = '';
+
+                    results.forEach(music => {
+                        const li = document.createElement('li');
+                        li.textContent = `${music.title} by ${music.artist} (${music.genre})`;
+                        searchResults.appendChild(li);
+                    });
+                };
+            };
+
+            // Initially show the Signup section
+            toggleSection('signup');
+
+            // Event listeners for sidebar navigation
+            document.querySelector('.sidebar ul').addEventListener('click', (e) => {
+                const sectionId = e.target.closest('a')?.getAttribute('href').substring(1);
+                if (sectionId) {
+                    toggleSection(sectionId);
+                }
+            });
+        };
+
+        dbPromise.onerror = (event) => {
+            console.error("Database error: " + event.target.errorCode);
+        };
+    </script>
+</body>
+</html>
